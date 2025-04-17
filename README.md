@@ -1,4 +1,5 @@
-# Jujutsu Kaisen Photo Gen App
+# CursedImageGen
+Jujutsu Kaisen style image-to-image gen app
 
 ## Project Scope
 - A single-page React app allowing users to upload a photo and generate a Jujutsu Kaisen–style image via the ChatGPT 4o image generation API.
@@ -38,3 +39,7 @@ Jujutsu Kaisen Photo Gen App/
       ├─ schemas/
       └─ utils/
 ```
+=======
+# CursedImageGen
+Jujutsu Kaisen style image-to-image gen app
+>>>>>>> 7aa46f797e8f0b8f1ef09527f37049f977ad45be
