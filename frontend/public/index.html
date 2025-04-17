@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cursed Image Generation</title>
+  <style>
+    /* Custom Jujutsu Kaisen font */
+    @font-face {
+      font-family: 'JujutsuKaisen';
+      src: url(data:font/truetype;charset=utf-8;base64,AAEAAAAOAIA...);
+      font-weight: normal;
+      font-style: normal;
+    }
+    :root {
+      --bg: #0d0d0d;
+      --panel: rgba(255,255,255,0.05);
+      --accent: #FF005B;
+      --text: #e0e0e0;
+      --radius: 8px;
+      --gap: 1rem;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    header {
+      text-align: center;
+      padding: 2rem 1rem;
+    }
+    header h1 {
+      font-family: 'JujutsuKaisen', sans-serif;
+      font-size: 3rem;
+      background: linear-gradient(90deg, #FF005B, #FF77A9);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+      max-width: 800px;
+      margin: auto;
+      width: 100%;
+      gap: var(--gap);
+    }
+    .upload-card {
+      background: var(--panel);
+      padding: 1.5rem;
+      border-radius: var(--radius);
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+    }
+    .upload-card input,
+    .upload-card textarea {
+      width: 100%;
+      padding: 0.75rem;
+      border: none;
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.1);
+      color: var(--text);
+      font-size: 1rem;
+    }
+    .upload-card button {
+      align-self: flex-end;
+      padding: 0.75rem 1.5rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .upload-card button:hover {
+      background: #ff3380;
+    }
+    .balance-bar {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      align-items: center;
+    }
+    .balance-bar .credits {
+      font-size: 1.1rem;
+    }
+    .balance-bar a {
+      padding: 0.5rem 1rem;
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius);
+      text-decoration: none;
+      transition: background 0.3s;
+    }
+    .balance-bar a:hover { background: #ff3380; }
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: var(--gap);
+      width: 100%;
+    }
+    .gallery img {
+      width: 100%;
+      border-radius: var(--radius);
+      object-fit: cover;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+    footer {
+      text-align: center;
+      padding: 1rem;
+      font-size: 0.9rem;
+      color: rgba(224,224,224,0.6);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <footer>Previous generations are stored in your browser.</footer>
+</body>
+</html>
