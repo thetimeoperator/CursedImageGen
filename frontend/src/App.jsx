@@ -53,6 +53,25 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false); // State for modal visibility
 
+  // Load initial credits from localStorage or default to 0
+  useEffect(() => {
+    const initialCredits = localStorage.getItem('credits');
+    // Only set credits if they exist in localStorage, otherwise keep the default useState value (0)
+    if (initialCredits !== null) {
+      const parsedCredits = parseInt(initialCredits, 10);
+      if (!isNaN(parsedCredits)) {
+        setCredits(parsedCredits);
+        console.log(`Loaded ${parsedCredits} credits from localStorage.`);
+      } else {
+         console.warn('Invalid credit value found in localStorage, resetting to 0.');
+         localStorage.setItem('credits', '0'); // Reset invalid value
+      }
+    } else {
+      console.log('No credits found in localStorage, starting with 0.');
+      // No need to explicitly set to 0 here, as it's the useState default
+    }
+  }, []);
+
   // Enhanced localStorage updates with error handling
   useEffect(() => { 
     try {
@@ -72,12 +91,53 @@ function App() {
     }
   }, [gallery]);
 
-  // IMMEDIATE FIX: Set credits to 20 for testing without requiring purchase
+  // --- Add useEffect for Stripe Confirmation ---
   useEffect(() => {
-    // Give the user 20 credits immediately to test with
-    setCredits(20);
-    console.log("TEMPORARY FIX: Added 20 credits for testing");
-  }, []);
+    const confirmPurchase = async () => {
+      const queryParams = new URLSearchParams(window.location.search);
+      const sessionId = queryParams.get('session_id');
+
+      if (sessionId) {
+        setLoading(true); // Show loading indicator during confirmation
+        try {
+          console.log(`Found session_id: ${sessionId}, confirming purchase...`);
+          const res = await axios.get('/api/confirm', { params: { session_id: sessionId } });
+          
+          if (res.data && res.data.credits) {
+            const purchasedCredits = parseInt(res.data.credits, 10);
+            if (!isNaN(purchasedCredits) && purchasedCredits > 0) {
+              console.log(`Purchase confirmed! Adding ${purchasedCredits} credits.`);
+              setCredits(prev => {
+                  const newTotal = prev + purchasedCredits;
+                  localStorage.setItem('credits', newTotal.toString()); // Update localStorage
+                  console.log(`New credit total: ${newTotal}`);
+                  return newTotal;
+              });
+              alert(`Successfully added ${purchasedCredits} credits!`);
+            } else {
+               console.warn('Confirmation successful but received invalid credit amount:', res.data.credits);
+               alert('Purchase confirmed, but there was an issue adding credits.');
+            }
+          } else {
+            console.error('Confirmation failed or no credits returned:', res.data);
+            alert(`Failed to confirm purchase. ${res.data?.error || 'Unknown error'}`);
+          }
+        } catch (error) {
+          console.error('Error confirming purchase:', error);
+          alert(`Error confirming purchase: ${error.response?.data?.error || error.message}`);
+        } finally {
+          // Clean up URL by removing the session_id query parameter
+          const url = new URL(window.location);
+          url.searchParams.delete('session_id');
+          window.history.replaceState({}, document.title, url.toString());
+          setLoading(false);
+        }
+      }
+    };
+
+    confirmPurchase();
+  }, []); // Run only once on component mount
+  // --- End useEffect ---
 
   // Handle Stripe checkout return and update credits
   useEffect(() => {
@@ -152,12 +212,20 @@ function App() {
         
         // Add to gallery and update credits
         setGallery(prev => [imageDataUrl, ...prev]);
-        setCredits(prev => prev - 1);
+        setCredits(prev => {
+          const newTotal = prev - 1;
+          localStorage.setItem('credits', newTotal.toString()); // Update localStorage on use
+          return newTotal;
+        });
         setFile(null);
       } else if (res.data.url) {
         // For backward compatibility with the old API response format
         setGallery(prev => [res.data.url, ...prev]);
-        setCredits(prev => prev - 1);
+        setCredits(prev => {
+          const newTotal = prev - 1;
+          localStorage.setItem('credits', newTotal.toString()); // Update localStorage on use
+          return newTotal;
+        });
         setFile(null);
       } else if (res.data.error) {
         alert(`Error: ${res.data.error}`);
