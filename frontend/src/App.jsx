@@ -85,7 +85,7 @@ function App() {
     const sessionId = params.get('session_id');
     if (sessionId) {
       setLoading(true); // Show loading indicator while confirming
-      axios.get(`/api/confirm?session_id=${sessionId}`)
+      axios.get(`http://localhost:8000/api/confirm?session_id=${sessionId}`)
         .then(res => {
           if (res.data && res.data.credits) {
             const newCredits = res.data.credits;
@@ -122,6 +122,10 @@ function App() {
       alert('Please upload a photo first');
       return;
     }
+    if (!prompt || prompt.trim() === '') {
+      alert('Please add a prompt describing what you want in your JJK image');
+      return;
+    }
     if (credits <= 0) {
       alert('You need credits to generate images. Please purchase credits.');
       return;
@@ -133,8 +137,13 @@ function App() {
     formData.append('prompt', prompt);
     
     try {
-      const res = await axios.post('/api/generate', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      console.log('Sending image to backend, file size:', file.size);
+      const res = await axios.post('http://localhost:8000/api/generate', formData, {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          'Accept': 'application/json'
+        },
+        withCredentials: false
       });
       
       if (res.data.image_base64) {
@@ -155,7 +164,23 @@ function App() {
       }
     } catch (err) {
       console.error("Generation Error:", err);
-      alert(`Generation failed: ${err.message || 'Unknown error'}`);
+      
+      // More detailed error logging
+      if (err.response) {
+        // The request was made and the server responded with a status code outside of 2xx
+        console.error("Error Response:", err.response.data);
+        console.error("Error Status:", err.response.status);
+        console.error("Error Headers:", err.response.headers);
+        alert(`API Error (${err.response.status}): ${JSON.stringify(err.response.data)}`);
+      } else if (err.request) {
+        // The request was made but no response was received
+        console.error("Error Request:", err.request);
+        alert(`Network Error: No response received from server. Check if the backend is running.`);
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error("Error Message:", err.message);
+        alert(`Request Error: ${err.message}`);
+      }
     } finally {
       setLoading(false);
       document.getElementById('photo-upload').value = '';
@@ -173,7 +198,7 @@ function App() {
     setLoading(true);
     setShowModal(false);
     try {
-      const res = await axios.get('/api/checkout', { params: { price_id: priceId } });
+      const res = await axios.get('http://localhost:8000/api/checkout', { params: { price_id: priceId } });
       if (res.data && res.data.url) {
         window.location.href = res.data.url;
       } else {
@@ -222,8 +247,15 @@ function App() {
         <section className="upload-section" style={{ marginBottom: '20px' }}>
           <label htmlFor="photo-upload">Upload Photo</label>
           <input id="photo-upload" type="file" accept="image/*" onChange={e => setFile(e.target.files[0])} />
-          <label htmlFor="prompt">Add a prompt (optional)</label>
-          <textarea id="prompt" rows={4} placeholder="Add optional prompt details... Style of Jujutsu Kaisen by Studio MAPPA will be added automatically." value={prompt} onChange={e => setPrompt(e.target.value)} />
+          <label htmlFor="prompt">Add a prompt (required)</label>
+          <textarea 
+            id="prompt" 
+            rows={4} 
+            placeholder="Describe what you want in your Jujutsu Kaisen style image... Style elements will be added automatically." 
+            value={prompt} 
+            onChange={e => setPrompt(e.target.value)}
+            required
+          />
           <button className="generate-btn" onClick={handleGenerate} disabled={loading || credits <= 0}>
             {loading ? 'Generating...' : `Generate (${credits} credit${credits !== 1 ? 's' : ''} left)`}
           </button>

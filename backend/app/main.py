@@ -4,19 +4,18 @@ from fastapi.responses import RedirectResponse, JSONResponse
 import stripe, os
 import httpx # Added for async HTTP requests
 import base64 # Added for image encoding
-import io
-from PIL import Image
 from dotenv import load_dotenv
-from huggingface_hub import InferenceClient
+from PIL import Image # For image preprocessing
+from io import BytesIO # For handling image data streams
 
 # Load environment variables
 load_dotenv()
 
 # Initialize APIs
-# Get Hugging Face API key
-hf_api_key = os.getenv("HUGGINGFACE_API_KEY")
-if not hf_api_key:
-    raise ValueError("HUGGINGFACE_API_KEY not set in .env file")
+# Get getimg.ai API key
+getimg_key = os.getenv("GETIMG_API_KEY")
+if not getimg_key:
+    raise ValueError("GETIMG_API_KEY not set in .env file")
 
 stripe_key = os.getenv("STRIPE_SECRET_KEY")
 if not stripe_key:
@@ -34,8 +33,9 @@ app = FastAPI()
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],
+    allow_origins=["*", FRONTEND_URL, "http://localhost:3000", "http://127.0.0.1:3000", "http://127.0.0.1:50224"],
     allow_methods=["*"],
+    allow_credentials=True,
     allow_headers=["*"],
 )
 
@@ -48,13 +48,55 @@ PRICE_OPTIONS = {
 @app.post("/api/generate")
 async def generate(file: UploadFile = File(...), prompt: str = Form("")):
     """
-    Receives an image and prompt, creates a Jujutsu Kaisen style version using Hugging Face's Inference API.
+    Receives an image and prompt, creates a Jujutsu Kaisen style version using getimg.ai's SDXL Image-to-Image API.
     """
     try:
         # 1. Read the uploaded file contents
         contents = await file.read()
+        print(f"Received image file: {file.filename}, size: {len(contents)} bytes")
+        
+        # 1.5 Preprocess the image to ensure it meets API requirements
+        try:
+            # Open the image using PIL
+            img = Image.open(BytesIO(contents))
+            print(f"Original image dimensions: {img.size}, format: {img.format}")
+            
+            # Based on our tests, the API is quite flexible with image formats
+            # But to be safe, let's ensure the image is in a standard format
+            
+            # Convert to RGB if needed (this handles RGBA or other color modes)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+                print(f"Converted image to RGB mode")
+                
+            # Our tests showed all sizes work, but let's limit to 1024x1024 max for efficiency
+            if img.width > 1024 or img.height > 1024:
+                img.thumbnail((1024, 1024))
+                print(f"Resized image dimensions: {img.size}")
+            
+            # Save as PNG (most reliable from our tests)
+            buffered = BytesIO()
+            img.save(buffered, format="PNG")
+            contents = buffered.getvalue()
+            print(f"Preprocessed image: {len(contents)} bytes, PNG format")
+        except Exception as e:
+            print(f"Error preprocessing image: {e}")
+            # Continue with original image if preprocessing fails
+            pass
 
-        # 2. Define the JJK style prompt and combine with user prompt
+        # 2. Base64 encode the image - getimg.ai requires standard base64 without data URI prefix
+        image_base64 = base64.b64encode(contents).decode('utf-8')
+        print(f"Encoded image to base64, length: {len(image_base64)}")
+
+        # 3. Define the getimg.ai API endpoint and headers
+        api_url = "https://api.getimg.ai/v1/stable-diffusion-xl/image-to-image"
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "authorization": f"Bearer {getimg_key}"
+        }
+
+        # 4. Define the JJK style prompt and combine with user prompt
         jjk_style_prompt = (
             "Jujutsu Kaisen anime style by Studio MAPPA, "
             "with glowing blue curse energy, Shibuya arc aesthetic, "
@@ -66,36 +108,73 @@ async def generate(file: UploadFile = File(...), prompt: str = Form("")):
         full_prompt = f"{jjk_style_prompt}, {prompt.strip()}" if prompt and prompt.strip() else jjk_style_prompt
         negative_prompt = "text, watermark, signature, blurry, low quality, deformed, multiple limbs, extra fingers"
 
-        print(f"Using Hugging Face Inference API with prompt: {full_prompt[:100]}...")
+        # 5. Construct the payload for getimg.ai SDXL API
+        # Make sure the image parameter is valid - this is critical
+        if not image_base64 or len(image_base64) < 100:
+            return JSONResponse(status_code=400, content={"error": "Invalid image: base64 encoding too small or empty"})
+            
+        # Log the image details (not the full base64 for privacy)
+        print(f"Base64 image length: {len(image_base64)}, preview: {image_base64[:10]}...{image_base64[-10:]}")
+        print(f"Sending to getimg.ai with prompt: '{prompt[:50]}...' (truncated)")
         
-        # 3. Initialize the Hugging Face Inference Client
-        client = InferenceClient(api_key=hf_api_key)
+        payload = {
+            "prompt": full_prompt,
+            "image": image_base64,  # This is the field the API is saying is missing
+            "negative_prompt": negative_prompt,
+            "strength": 0.7,  # Controls how much the original image influences the result
+            "steps": 30,     # Number of diffusion steps
+            "guidance": 7.5,  # How closely to follow the prompt
+            "output_format": "png"
+        }
         
-        # 4. Create a PIL Image from the uploaded bytes
-        input_image = Image.open(io.BytesIO(contents))
+        # Verify payload has the required fields
+        print(f"Payload contains image field: {'image' in payload}")
+        print(f"Payload fields: {list(payload.keys())}")
         
-        # 5. Call the Hugging Face Inference API for image-to-image generation
-        # Using the cagliostrolab/animagine-xl-3.1 model
-        result_image = client.image_to_image(
-            image=input_image,
-            prompt=full_prompt,
-            negative_prompt=negative_prompt,
-            model="cagliostrolab/animagine-xl-3.1",
-            # Additional parameters for the model
-            guidance_scale=7.5,  # How closely to follow the prompt
-            strength=0.7,        # Controls how much the original image influences the result
-            num_inference_steps=30  # Number of diffusion steps
-        )
-        
-        print("Successfully generated image with Hugging Face API")
-        
-        # 6. Convert the PIL Image to base64 for sending to frontend
-        buffered = io.BytesIO()
-        result_image.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        
-        # 7. Return the base64 encoded image
-        return JSONResponse(content={"image_base64": img_str})
+        print(f"Calling getimg.ai SDXL API with prompt: {full_prompt[:100]}...")
+
+        # 6. Make the asynchronous API call using httpx
+        async with httpx.AsyncClient(timeout=60.0) as client: # Increased timeout for image generation
+            print(f"Making API call to: {api_url}")
+            # Ensure our headers are correct
+            print(f"Using headers: {headers}")
+            # Make the API call
+            response = await client.post(api_url, json=payload, headers=headers)
+            print(f"Response status: {response.status_code}")
+            
+            # 7. Process the response
+            response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+            result = response.json()
+            print(f"API Response status: {response.status_code}")
+            print(f"API Response keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")            
+            # 8. Extract the generated image (assuming it's in result['image'] as base64)
+            generated_image_base64 = result.get('image')
+            if not generated_image_base64:
+                print(f"Error: 'image' field not found in getimg.ai response: {result}")
+                return JSONResponse(status_code=500, content={"error": "Failed to retrieve image from API response"})
+            # Ensure the base64 image format is correct (no prefix)
+            if generated_image_base64.startswith('data:image/'):
+                generated_image_base64 = generated_image_base64.split(',')[1]
+
+            # 9. Return the base64 encoded image
+            return JSONResponse(content={"image_base64": generated_image_base64})
+
+    except httpx.HTTPStatusError as e:
+        # Handle API errors specifically
+        error_details = "Unknown API error"
+        try:
+            error_details = e.response.json()
+        except Exception:
+            error_details = e.response.text
+        print(f"getimg.ai API Error: {e.response.status_code} - {error_details}")
+        return JSONResponse(status_code=e.response.status_code, content={"error": f"API Error: {error_details}"})
+
+    except Exception as e:
+        # Handle other potential errors (file reading, base64 encoding, etc.)
+        print(f"Error during image generation: {e}")
+        import traceback
+        traceback.print_exc() # Print detailed traceback for debugging
+        return JSONResponse(status_code=500, content={"error": f"An unexpected error occurred: {str(e)}"})
 
     except Exception as e:
         # Handle any errors that occurred

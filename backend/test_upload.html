@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JJK API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #cccccc;
+        }
+        img {
+            max-width: 100%;
+            margin-top: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+        }
+    </style>
+</head>
+<body>
+    <h1>JJK API Direct Test</h1>
+    <div class="container">
+        <h2>Upload Test</h2>
+        <form id="uploadForm">
+            <div>
+                <label for="image">Image:</label>
+                <input type="file" id="image" name="file" accept="image/*" required>
+            </div>
+            <div>
+                <label for="prompt">Prompt (optional):</label>
+                <textarea id="prompt" name="prompt"></textarea>
+            </div>
+            <button type="submit" id="submitBtn">Generate Image</button>
+        </form>
+        <div id="loadingMsg" style="display: none;">Processing image...</div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const imageInput = document.getElementById('image');
+            const promptInput = document.getElementById('prompt');
+            const submitBtn = document.getElementById('submitBtn');
+            const loadingMsg = document.getElementById('loadingMsg');
+            const resultDiv = document.getElementById('result');
+            
+            if (!imageInput.files[0]) {
+                alert('Please select an image to upload');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', imageInput.files[0]);
+            formData.append('prompt', promptInput.value);
+            
+            // Show loading state
+            submitBtn.disabled = true;
+            loadingMsg.style.display = 'block';
+            resultDiv.innerHTML = '';
+            
+            try {
+                console.log('Sending request to backend...');
+                
+                // Make the API call - direct fetch with no CORS restrictions
+                const response = await fetch('http://localhost:8000/api/generate', {
+                    method: 'POST',
+                    body: formData,
+                    // No credentials or special headers needed
+                });
+                
+                console.log('Got response:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API error (${response.status}): ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Response data keys:', Object.keys(data));
+                
+                if (data.image_base64) {
+                    // Display the generated image
+                    const img = document.createElement('img');
+                    img.src = `data:image/png;base64,${data.image_base64}`;
+                    resultDiv.innerHTML = '<h3>Generated Image:</h3>';
+                    resultDiv.appendChild(img);
+                    
+                    // Add download button
+                    const downloadBtn = document.createElement('a');
+                    downloadBtn.href = img.src;
+                    downloadBtn.download = 'jujutsu-kaisen-image.png';
+                    downloadBtn.textContent = 'Download Image';
+                    downloadBtn.style.display = 'inline-block';
+                    downloadBtn.style.margin = '10px 0';
+                    downloadBtn.style.padding = '10px 15px';
+                    downloadBtn.style.background = '#2196F3';
+                    downloadBtn.style.color = 'white';
+                    downloadBtn.style.textDecoration = 'none';
+                    downloadBtn.style.borderRadius = '4px';
+                    resultDiv.appendChild(downloadBtn);
+                } else {
+                    resultDiv.innerHTML = '<p>Error: No image data in response</p>';
+                    console.error('Response data:', data);
+                }
+            } catch (error) {
+                console.error('Error generating image:', error);
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            } finally {
+                // Hide loading state
+                submitBtn.disabled = false;
+                loadingMsg.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
