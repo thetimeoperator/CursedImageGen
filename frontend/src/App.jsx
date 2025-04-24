@@ -103,18 +103,29 @@ function App() {
   useEffect(() => {
     async function loadGalleryFromDB() {
       console.log('[loadGalleryFromDB] Starting...');
+      let objectUrls = []; // Define outside try block
       try {
         const db = await initDB();
-        console.log('[loadGalleryFromDB] DB initialized, getting all items...');
+        console.log('[loadGalleryFromDB] DB handle obtained.');
         const blobs = await db.getAll(STORE_NAME);
-        console.log(`[loadGalleryFromDB] Found ${blobs.length} items in DB.`);
-        const objectUrls = blobs.map(item => ({ 
-          id: item.id, // Keep the ID for potential deletion later
-          url: URL.createObjectURL(item.blob) 
-        }));
+        console.log(`[loadGalleryFromDB] Retrieved ${blobs.length} items from DB.`);
+        objectUrls = blobs.map(item => {
+          let url = null;
+          try {
+            url = URL.createObjectURL(item.blob);
+            // console.log(`[loadGalleryFromDB] Created object URL for ID ${item.id}: ${url}`); // Optional: Too verbose?
+          } catch(e) {
+            console.error(`[loadGalleryFromDB] Error creating object URL for ID ${item.id}:`, e); 
+          }
+          return {
+            id: item.id, 
+            url: url 
+          };
+        }).filter(item => item.url !== null); // Filter out items where URL creation failed
+
         // Reverse to show newest first
         setGallery(objectUrls.reverse()); 
-        console.log(`Loaded ${objectUrls.length} images from IndexedDB.`);
+        console.log(`[loadGalleryFromDB] Set gallery state with ${objectUrls.length} valid images.`);
       } catch (e) {
         console.error('Error loading gallery from IndexedDB:', e);
       }
@@ -123,7 +134,9 @@ function App() {
 
     // Cleanup object URLs on unmount to prevent memory leaks
     return () => {
-      gallery.forEach(item => URL.revokeObjectURL(item.url));
+      objectUrls.forEach(item => { // Use the locally scoped URLs before reversal
+          if (item.url) URL.revokeObjectURL(item.url);
+      });
     };
   }, []); // Run only once on mount
 
@@ -219,18 +232,31 @@ function App() {
           const newItemId = await db.add(STORE_NAME, { blob: imageBlob });
           console.log(`Image blob saved to IndexedDB with ID: ${newItemId}`);
 
-          // Create a temporary object URL for display in this session
-          const objectUrl = URL.createObjectURL(imageBlob);
-          console.log('Created Object URL:', objectUrl); // <-- Add log
-          
-          // Add to gallery state (newest first) and update credits
-          setGallery(prev => [{ id: newItemId, url: objectUrl }, ...prev]);
-          setCredits(prev => {
-            const newTotal = prev - 1;
-            localStorage.setItem('credits', newTotal.toString()); // Update localStorage on use
-            return newTotal;
-          });
-          setFile(null); // Clear the uploaded file state
+          let objectUrl = null;
+          try {
+              objectUrl = URL.createObjectURL(imageBlob);
+              console.log('Created Object URL:', objectUrl); 
+          } catch(e) {
+              console.error('Error creating object URL during generation:', e);
+          }
+           
+          if (objectUrl) { // Only update state if URL was created
+              // Add to gallery state (newest first) and update credits
+              setGallery(prev => {
+                  const newState = [{ id: newItemId, url: objectUrl }, ...prev];
+                  console.log('Updated gallery state with new item. New length:', newState.length); // Log state update
+                  return newState;
+              });
+              setCredits(prev => {
+                const newTotal = prev - 1;
+                localStorage.setItem('credits', newTotal.toString()); // Update localStorage on use
+                console.log(`Credits updated and saved to localStorage: ${newTotal}`); 
+                return newTotal;
+              });
+              setFile(null); // Clear the uploaded file state
+          } else {
+              alert('Image was generated and saved, but failed to create a display URL.');
+          }
       } else {
           console.error('Received empty or invalid blob from backend.');
           alert('Failed to generate image: Received invalid data from server.');
@@ -288,10 +314,10 @@ function App() {
     // Note: setLoading(false) is mostly handled by page redirect or error
   };
 
-  console.log('Rendering with gallery state:', gallery); // <-- Add log
-
   return (
     <>
+      {/* Log moved inside render */}
+      {console.log('Rendering App component with gallery state:', gallery)}
       {/* Modal Structure */}
       {showModal && (
         <div style={modalOverlayStyle}>
