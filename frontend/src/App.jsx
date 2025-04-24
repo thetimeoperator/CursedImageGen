@@ -221,6 +221,7 @@ function App() {
 
           // Create a temporary object URL for display in this session
           const objectUrl = URL.createObjectURL(imageBlob);
+          console.log('Created Object URL:', objectUrl); // <-- Add log
           
           // Add to gallery state (newest first) and update credits
           setGallery(prev => [{ id: newItemId, url: objectUrl }, ...prev]);
@@ -286,6 +287,8 @@ function App() {
     }
     // Note: setLoading(false) is mostly handled by page redirect or error
   };
+
+  console.log('Rendering with gallery state:', gallery); // <-- Add log
 
   return (
     <>
