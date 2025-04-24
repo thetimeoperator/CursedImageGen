@@ -32,6 +32,7 @@ const modalButtonStyle = {
 const DB_NAME = 'JJKImageGenDB';
 const STORE_NAME = 'generatedImages';
 const DB_VERSION = 1;
+const INITIAL_CREDITS = 50; // Set desired initial credits here
 
 async function initDB() {
   console.log('[initDB] Attempting to open IndexedDB...');
@@ -55,12 +56,12 @@ function App() {
   const [credits, setCredits] = useState(() => {
     try {
       const storedCredits = localStorage.getItem('credits');
-      if (storedCredits === null) return 0;
+      if (storedCredits === null) return INITIAL_CREDITS;
       const parsedCredits = parseInt(storedCredits);
-      return isNaN(parsedCredits) ? 0 : parsedCredits;
+      return isNaN(parsedCredits) ? INITIAL_CREDITS : parsedCredits;
     } catch (e) {
       console.error('Error loading credits from localStorage:', e);
-      return 0;
+      return INITIAL_CREDITS;
     }
   });
   
@@ -81,15 +82,15 @@ function App() {
         console.log('[Credits Load] Set credits state to:', numCredits);
       } else {
         console.error('[Credits Load] Invalid number found in localStorage, resetting to default.');
-        localStorage.setItem('credits', '0'); // Reset if invalid
-        setCredits(0);
-        console.log('[Credits Load] Set credits state to default:', 0);
+        localStorage.setItem('credits', INITIAL_CREDITS.toString()); // Reset if invalid
+        setCredits(INITIAL_CREDITS);
+        console.log('[Credits Load] Set credits state to default:', INITIAL_CREDITS);
       }
     } else {
       // If no credits in localStorage, initialize with default
-      localStorage.setItem('credits', '0');
-      setCredits(0);
-      console.log('[Credits Load] No credits found in localStorage, initialized to default:', 0);
+      localStorage.setItem('credits', INITIAL_CREDITS.toString());
+      setCredits(INITIAL_CREDITS);
+      console.log('[Credits Load] No credits found in localStorage, initialized to default:', INITIAL_CREDITS);
     }
   }, []);
 
