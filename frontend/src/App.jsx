@@ -221,13 +221,18 @@ function App() {
     
     try {
       console.log('Sending image to backend, file size:', file.size);
-      const res = await axios.post(`${API_BASE_URL}/api/generate`, formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/generate`, formData, {
         responseType: 'blob' // Ensure we get a Blob back
       });
       
+      console.log('Raw Axios Response:', response);
+      const imageBlob = response.data;
+      console.log('Response Data:', imageBlob);
+      console.log('Type of Response Data:', typeof imageBlob, imageBlob instanceof Blob);
+      console.log('Check: Is Blob and size > 0?', imageBlob instanceof Blob && imageBlob.size > 0);
+      
       // --- Save Blob to IndexedDB and update state --- 
-      const imageBlob = res.data; // This is the Blob
-      if (imageBlob && imageBlob.size > 0) {
+      if (imageBlob instanceof Blob && imageBlob.size > 0) {
           const db = await initDB();
           const newItemId = await db.add(STORE_NAME, { blob: imageBlob });
           console.log(`Image blob saved to IndexedDB with ID: ${newItemId}`);
