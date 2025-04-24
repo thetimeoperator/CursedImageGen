@@ -70,18 +70,19 @@ function App() {
   // Load initial credits from localStorage or default to 0
   useEffect(() => {
     const initialCredits = localStorage.getItem('credits');
-    // Only set credits if they exist in localStorage, otherwise keep the default useState value (0)
+    console.log('Attempting to load credits from localStorage:', initialCredits); 
     if (initialCredits !== null) {
       const parsedCredits = parseInt(initialCredits, 10);
       if (!isNaN(parsedCredits)) {
+        console.log('Parsed credits successfully:', parsedCredits); 
         setCredits(parsedCredits);
         console.log(`Loaded ${parsedCredits} credits from localStorage.`);
       } else {
          console.warn('Invalid credit value found in localStorage, using 0.');
       }
     } else {
-      console.log('No credits found in localStorage, starting with 0.');
-      // No need to explicitly set to 0 here, as it's the useState default
+      console.log('No credits found in localStorage, defaulting to 0.'); 
+      setCredits(0); 
     }
   }, []);
 
