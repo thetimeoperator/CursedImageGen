@@ -16,6 +16,7 @@ Jujutsu Kaisen style image-to-image transformation app
 - HTTP Client: `openai` Python library
 - Env: `python-dotenv`
 - Persistence: Browser `localStorage`
+*   **Image Transformation:** Leverages the OpenAI API's `images.edit` endpoint with the specific `gpt-image-1` model to transform uploaded photos into the Jujutsu Kaisen anime style, preserving the original composition.
 
 ## Current Implementation
 - Backend uses OpenAI's `gpt-image-1` model via the `images.edit` endpoint for high-quality anime-style transformations based on input images.

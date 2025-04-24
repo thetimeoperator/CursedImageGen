@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse, JSONResponse
 import stripe, os
 from openai import AsyncOpenAI
 import base64
+import httpx
 from dotenv import load_dotenv
 from PIL import Image
 from io import BytesIO
@@ -77,12 +78,22 @@ async def generate(file: UploadFile = File(...), prompt: str = Form("")):
             # Save as PNG (most reliable from our tests)
             buffered = BytesIO()
             img.save(buffered, format="PNG")
-            contents = buffered.getvalue()
+            buffered.seek(0) # IMPORTANT: Reset buffer position to the beginning
+            contents = buffered.getvalue() # Get raw bytes after saving as PNG
             print(f"Preprocessed image: {len(contents)} bytes, PNG format")
         except Exception as e:
             print(f"Error preprocessing image: {e}")
-            # Continue with original image if preprocessing fails
+            # Fallback: use original contents if preprocessing failed
             pass
+
+        # Define filename and create the tuple for file upload
+        image_filename = "uploaded_image.png"
+        # Use the raw 'contents' bytes in the tuple, per SDK docs
+        image_data_tuple = (image_filename, contents, "image/png")
+
+        # Initialize OpenAI Client with custom HTTP client to disable proxy env vars
+        custom_http_client = httpx.AsyncClient(trust_env=False)
+        client = AsyncOpenAI(api_key=openai_key, http_client=custom_http_client)
 
         # 4. Define the JJK style prompt and combine with user prompt
         jjk_style_prompt = (
@@ -100,40 +111,33 @@ async def generate(file: UploadFile = File(...), prompt: str = Form("")):
 
         # 5. Call OpenAI Image Edit API
         print(f"Calling OpenAI images.edit with model gpt-image-1...")
-        try:
-            # Initialize client within async context manager
-            async with AsyncOpenAI(api_key=openai_key) as client:
-                response = await client.images.edit(
-                    model="gpt-image-1",
-                    image=contents,  # Pass the raw bytes of the preprocessed image
-                    prompt=final_prompt,
-                    n=1,
-                    size="1024x1024", # Standard size
-                    response_format="b64_json" # Get base64 directly
-                )
-            
-            # 6. Process the response
-            b64_image = response.data[0].b64_json
-            print(f"Successfully received image from OpenAI. Size: {len(b64_image)} chars")
-            # 7. Return the base64 encoded image
-            return {"image_base64": b64_image}
+        async with client:
+            response = await client.images.edit(
+                model="gpt-image-1",
+                image=image_data_tuple, # Pass tuple: (filename, raw_bytes, mimetype)
+                prompt=final_prompt,
+                n=1,
+                size="1024x1024" # Standard size
+            )
+        
+        # 6. Process the response
+        b64_image = response.data[0].b64_json
+        print(f"Successfully received image from OpenAI. Size: {len(b64_image)} chars")
+        # 7. Return the base64 encoded image
+        return {"image_base64": b64_image}
 
-        except Exception as e: # Consider more specific OpenAI exceptions later if needed
-            error_message = f"Error calling OpenAI API: {e}"
-            print(error_message)
-            # Consider mapping specific OpenAI errors to user-friendly messages
-            status_code = 500 # Default to internal server error
-            # Add checks for specific error types from OpenAI if applicable
-            # e.g., if isinstance(e, openai.error.AuthenticationError): status_code = 401
-            #      if isinstance(e, openai.error.RateLimitError): status_code = 429
-            # Check if error has a status_code attribute (newer OpenAI client might)
-            if hasattr(e, 'status_code'):
-                 status_code = e.status_code
-            return JSONResponse(status_code=status_code, content={"error": f"Image generation failed: {str(e)}"}) 
-
-    except Exception as e:
-        print(f"Error during image processing: {e}")
-        return JSONResponse(status_code=500, content={"error": f"Server error during image processing: {str(e)}"})
+    except Exception as e: # Consider more specific OpenAI exceptions later if needed
+        error_message = f"Error calling OpenAI API: {e}"
+        print(error_message)
+        # Consider mapping specific OpenAI errors to user-friendly messages
+        status_code = 500 # Default to internal server error
+        # Add checks for specific error types from OpenAI if applicable
+        # e.g., if isinstance(e, openai.error.AuthenticationError): status_code = 401
+        #      if isinstance(e, openai.error.RateLimitError): status_code = 429
+        # Check if error has a status_code attribute (newer OpenAI client might)
+        if hasattr(e, 'status_code'):
+             status_code = e.status_code
+        return JSONResponse(status_code=status_code, content={"error": f"Image generation failed: {str(e)}"}) 
 
 @app.get("/api/checkout")
 async def checkout(price_id: str = None):
