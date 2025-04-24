@@ -2,20 +2,20 @@ from fastapi import FastAPI, File, UploadFile, Form, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
 import stripe, os
-import httpx # Added for async HTTP requests
-import base64 # Added for image encoding
+from openai import AsyncOpenAI
+import base64
 from dotenv import load_dotenv
-from PIL import Image # For image preprocessing
-from io import BytesIO # For handling image data streams
+from PIL import Image
+from io import BytesIO
 
 # Load environment variables
 load_dotenv()
 
 # Initialize APIs
-# Get getimg.ai API key
-getimg_key = os.getenv("GETIMG_API_KEY")
-if not getimg_key:
-    raise ValueError("GETIMG_API_KEY not set in .env file")
+# Get OpenAI API key
+openai_key = os.getenv("OPENAI_API_KEY")
+if not openai_key:
+    raise ValueError("OPENAI_API_KEY not set in .env file")
 
 stripe_key = os.getenv("STRIPE_SECRET_KEY")
 if not stripe_key:
@@ -48,7 +48,7 @@ PRICE_OPTIONS = {
 @app.post("/api/generate")
 async def generate(file: UploadFile = File(...), prompt: str = Form("")):
     """
-    Receives an image and prompt, creates a Jujutsu Kaisen style version using getimg.ai's SDXL Image-to-Image API.
+    Receives an image and prompt, creates a Jujutsu Kaisen style version using OpenAI's gpt-image-1 edit API.
     """
     try:
         # 1. Read the uploaded file contents
@@ -84,105 +84,56 @@ async def generate(file: UploadFile = File(...), prompt: str = Form("")):
             # Continue with original image if preprocessing fails
             pass
 
-        # 2. Base64 encode the image - getimg.ai requires standard base64 without data URI prefix
-        image_base64 = base64.b64encode(contents).decode('utf-8')
-        print(f"Encoded image to base64, length: {len(image_base64)}")
-
-        # 3. Define the getimg.ai API endpoint and headers
-        api_url = "https://api.getimg.ai/v1/stable-diffusion-xl/image-to-image"
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "authorization": f"Bearer {getimg_key}"
-        }
-
         # 4. Define the JJK style prompt and combine with user prompt
         jjk_style_prompt = (
-            "Jujutsu Kaisen anime style by Studio MAPPA, "
-            "with glowing blue curse energy, Shibuya arc aesthetic, "
-            "dark blue and purple color palette, high-contrast shadows with stark highlights, "
-            "sharp detailed character features, dramatic lighting, bold linework, "
-            "realistic cloth textures, visible energy flows, Gege Akutami art style, "
-            "cinematic composition similar to Jujutsu Kaisen 0 movie"
+            "masterpiece, best quality, official Studio MAPPA artwork from Jujutsu Kaisen anime, "
+            "precise crisp lineart, professional anime production quality, "
+            "distinct bold black outlines, carefully cell-shaded anime art, "
+            "Shibuya arc signature style, Studio MAPPA color grading with deep purple and navy accents, "
+            "dramatic anime lighting with high contrast, flawless anime proportions, "
+            "expert animation-cel quality, fine detailed anime illustration, "
+            "authentic Gege Akutami character art, perfect anime eyes with highlights, "
+            "highly detailed background art, professional anime key visual quality"
         )
-        full_prompt = f"{jjk_style_prompt}, {prompt.strip()}" if prompt and prompt.strip() else jjk_style_prompt
-        negative_prompt = "text, watermark, signature, blurry, low quality, deformed, multiple limbs, extra fingers"
+        final_prompt = jjk_style_prompt + f" {prompt}" if prompt else jjk_style_prompt
+        print(f"Final prompt for OpenAI: {final_prompt}")
 
-        # 5. Construct the payload for getimg.ai SDXL API
-        # Make sure the image parameter is valid - this is critical
-        if not image_base64 or len(image_base64) < 100:
-            return JSONResponse(status_code=400, content={"error": "Invalid image: base64 encoding too small or empty"})
-            
-        # Log the image details (not the full base64 for privacy)
-        print(f"Base64 image length: {len(image_base64)}, preview: {image_base64[:10]}...{image_base64[-10:]}")
-        print(f"Sending to getimg.ai with prompt: '{prompt[:50]}...' (truncated)")
-        
-        payload = {
-            "prompt": full_prompt,
-            "image": image_base64,  # This is the field the API is saying is missing
-            "negative_prompt": negative_prompt,
-            "strength": 0.7,  # Controls how much the original image influences the result
-            "steps": 30,     # Number of diffusion steps
-            "guidance": 7.5,  # How closely to follow the prompt
-            "output_format": "png"
-        }
-        
-        # Verify payload has the required fields
-        print(f"Payload contains image field: {'image' in payload}")
-        print(f"Payload fields: {list(payload.keys())}")
-        
-        print(f"Calling getimg.ai SDXL API with prompt: {full_prompt[:100]}...")
-
-        # 6. Make the asynchronous API call using httpx
-        async with httpx.AsyncClient(timeout=60.0) as client: # Increased timeout for image generation
-            print(f"Making API call to: {api_url}")
-            # Ensure our headers are correct
-            print(f"Using headers: {headers}")
-            # Make the API call
-            response = await client.post(api_url, json=payload, headers=headers)
-            print(f"Response status: {response.status_code}")
-            
-            # 7. Process the response
-            response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
-            result = response.json()
-            print(f"API Response status: {response.status_code}")
-            print(f"API Response keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")            
-            # 8. Extract the generated image (assuming it's in result['image'] as base64)
-            generated_image_base64 = result.get('image')
-            if not generated_image_base64:
-                print(f"Error: 'image' field not found in getimg.ai response: {result}")
-                return JSONResponse(status_code=500, content={"error": "Failed to retrieve image from API response"})
-            # Ensure the base64 image format is correct (no prefix)
-            if generated_image_base64.startswith('data:image/'):
-                generated_image_base64 = generated_image_base64.split(',')[1]
-
-            # 9. Return the base64 encoded image
-            return JSONResponse(content={"image_base64": generated_image_base64})
-
-    except httpx.HTTPStatusError as e:
-        # Handle API errors specifically
-        error_details = "Unknown API error"
+        # 5. Call OpenAI Image Edit API
+        print(f"Calling OpenAI images.edit with model gpt-image-1...")
         try:
-            error_details = e.response.json()
-        except Exception:
-            error_details = e.response.text
-        print(f"getimg.ai API Error: {e.response.status_code} - {error_details}")
-        return JSONResponse(status_code=e.response.status_code, content={"error": f"API Error: {error_details}"})
+            # Initialize client within async context manager
+            async with AsyncOpenAI(api_key=openai_key) as client:
+                response = await client.images.edit(
+                    model="gpt-image-1",
+                    image=contents,  # Pass the raw bytes of the preprocessed image
+                    prompt=final_prompt,
+                    n=1,
+                    size="1024x1024", # Standard size
+                    response_format="b64_json" # Get base64 directly
+                )
+            
+            # 6. Process the response
+            b64_image = response.data[0].b64_json
+            print(f"Successfully received image from OpenAI. Size: {len(b64_image)} chars")
+            # 7. Return the base64 encoded image
+            return {"image_base64": b64_image}
+
+        except Exception as e: # Consider more specific OpenAI exceptions later if needed
+            error_message = f"Error calling OpenAI API: {e}"
+            print(error_message)
+            # Consider mapping specific OpenAI errors to user-friendly messages
+            status_code = 500 # Default to internal server error
+            # Add checks for specific error types from OpenAI if applicable
+            # e.g., if isinstance(e, openai.error.AuthenticationError): status_code = 401
+            #      if isinstance(e, openai.error.RateLimitError): status_code = 429
+            # Check if error has a status_code attribute (newer OpenAI client might)
+            if hasattr(e, 'status_code'):
+                 status_code = e.status_code
+            return JSONResponse(status_code=status_code, content={"error": f"Image generation failed: {str(e)}"}) 
 
     except Exception as e:
-        # Handle other potential errors (file reading, base64 encoding, etc.)
-        print(f"Error during image generation: {e}")
-        import traceback
-        traceback.print_exc() # Print detailed traceback for debugging
-        return JSONResponse(status_code=500, content={"error": f"An unexpected error occurred: {str(e)}"})
-
-    except Exception as e:
-        # Handle any errors that occurred
-        print(f"Error during image generation: {e}")
-        import traceback
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": f"An unexpected error occurred: {str(e)}"})
-
+        print(f"Error during image processing: {e}")
+        return JSONResponse(status_code=500, content={"error": f"Server error during image processing: {str(e)}"})
 
 @app.get("/api/checkout")
 async def checkout(price_id: str = None):
