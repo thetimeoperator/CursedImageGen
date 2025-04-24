@@ -68,8 +68,7 @@ function App() {
         setCredits(parsedCredits);
         console.log(`Loaded ${parsedCredits} credits from localStorage.`);
       } else {
-         console.warn('Invalid credit value found in localStorage, resetting to 0.');
-         localStorage.setItem('credits', '0'); // Reset invalid value
+         console.warn('Invalid credit value found in localStorage, using 0.');
       }
     } else {
       console.log('No credits found in localStorage, starting with 0.');
