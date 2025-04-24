@@ -125,7 +125,6 @@ function App() {
     return () => {
       gallery.forEach(item => URL.revokeObjectURL(item.url));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only once on mount
 
   // --- Add useEffect for Stripe Confirmation ---
