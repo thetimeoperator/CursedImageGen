@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, Request, Header
+from fastapi import FastAPI, File, UploadFile, Form, Request, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
 import stripe, os
@@ -123,8 +123,12 @@ async def generate(file: UploadFile = File(...), prompt: str = Form("")):
         # 6. Process the response
         b64_image = response.data[0].b64_json
         print(f"Successfully received image from OpenAI. Size: {len(b64_image)} chars")
-        # 7. Return the base64 encoded image
-        return {"image_base64": b64_image}
+        # 7. Decode the base64 string to raw bytes
+        image_bytes = base64.b64decode(b64_image)
+        print(f"Decoded image to {len(image_bytes)} bytes")
+
+        # 8. Return the raw image bytes with the correct media type
+        return Response(content=image_bytes, media_type="image/png")
 
     except Exception as e: # Consider more specific OpenAI exceptions later if needed
         error_message = f"Error calling OpenAI API: {e}"
