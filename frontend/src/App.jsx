@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { openDB } from 'idb';
 
 // Determine the base API URL. In development, it might be proxied, 
 // but in production, it must be set via the environment variable.
@@ -27,6 +28,23 @@ const modalButtonStyle = {
   borderRadius: '5px', border: 'none', backgroundColor: '#f0c040', color: 'black'
 };
 
+// --- IndexedDB Setup ---
+const DB_NAME = 'JJKImageGenDB';
+const STORE_NAME = 'generatedImages';
+const DB_VERSION = 1;
+
+async function initDB() {
+  const db = await openDB(DB_NAME, DB_VERSION, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+      }
+    },
+  });
+  return db;
+}
+// ----------------------
+
 function App() {
   const [file, setFile] = useState(null);
   const [prompt, setPrompt] = useState('');
@@ -43,17 +61,8 @@ function App() {
     }
   });
   
-  // Enhanced gallery initialization from localStorage
-  const [gallery, setGallery] = useState(() => {
-    try {
-      const storedGallery = localStorage.getItem('gallery');
-      if (!storedGallery) return [];
-      return JSON.parse(storedGallery);
-    } catch (e) {
-      console.error('Error loading gallery from localStorage:', e);
-      return [];
-    }
-  });
+  // Initialize gallery state as empty array.
+  const [gallery, setGallery] = useState([]); 
   
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false); // State for modal visibility
@@ -86,14 +95,31 @@ function App() {
     }
   }, [credits]);
   
-  useEffect(() => { 
-    try {
-      localStorage.setItem('gallery', JSON.stringify(gallery)); 
-      console.log(`Gallery saved to localStorage: ${gallery.length} items`);
-    } catch (e) {
-      console.error('Error saving gallery to localStorage:', e);
+  // --- Load Gallery from IndexedDB on Mount ---
+  useEffect(() => {
+    async function loadGalleryFromDB() {
+      try {
+        const db = await initDB();
+        const blobs = await db.getAll(STORE_NAME);
+        const objectUrls = blobs.map(item => ({ 
+          id: item.id, // Keep the ID for potential deletion later
+          url: URL.createObjectURL(item.blob) 
+        }));
+        // Reverse to show newest first
+        setGallery(objectUrls.reverse()); 
+        console.log(`Loaded ${objectUrls.length} images from IndexedDB.`);
+      } catch (e) {
+        console.error('Error loading gallery from IndexedDB:', e);
+      }
     }
-  }, [gallery]);
+    loadGalleryFromDB();
+
+    // Cleanup object URLs on unmount to prevent memory leaks
+    return () => {
+      gallery.forEach(item => URL.revokeObjectURL(item.url));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount
 
   // --- Add useEffect for Stripe Confirmation ---
   useEffect(() => {
@@ -143,44 +169,18 @@ function App() {
   }, []); // Run only once on component mount
   // --- End useEffect ---
 
-  // Handle Stripe checkout return and update credits
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('session_id');
-    if (sessionId) {
-      setLoading(true); // Show loading indicator while confirming
-      axios.get(`${API_BASE_URL}/api/confirm?session_id=${sessionId}`)
-        .then(res => {
-          if (res.data && res.data.credits) {
-            const newCredits = res.data.credits;
-            setCredits(prev => {
-              const total = prev + newCredits;
-              console.log(`Adding ${newCredits} credits to existing ${prev} credits. New total: ${total}`);
-              return total;
-            });
-            alert(`Successfully added ${newCredits} credits!`);
-            
-            // Double-check that localStorage was updated correctly
-            setTimeout(() => {
-              const storedCredits = localStorage.getItem('credits');
-              console.log(`Credits in localStorage after update: ${storedCredits}`);
-            }, 500);
-          } else {
-            alert('Could not confirm purchase. Please contact support if payment went through.');
-          }
-        })
-        .catch(err => {
-            console.error("Error confirming payment:", err);
-            alert('Error confirming purchase. Please check console.');
-        })
-        .finally(() => {
-            setLoading(false);
-            // Remove session_id from URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-        });
-    }
-  }, []);
+  // Callback to revoke object URL when component unmounts or gallery updates
+  const revokeObjectUrls = useCallback(() => {
+      gallery.forEach(item => URL.revokeObjectURL(item.url));
+  }, [gallery]);
 
+  useEffect(() => {
+      // Cleanup on component unmount
+      return () => revokeObjectUrls();
+  }, [revokeObjectUrls]);
+  // ----------------------------------------------
+
+  // --- Generate Image and Save to IndexedDB ---
   const handleGenerate = async () => {
     if (!file) {
       alert('Please upload a photo first');
@@ -203,24 +203,32 @@ function App() {
     try {
       console.log('Sending image to backend, file size:', file.size);
       const res = await axios.post(`${API_BASE_URL}/api/generate`, formData, {
-        responseType: 'blob' 
+        responseType: 'blob' // Ensure we get a Blob back
       });
       
-      const reader = new FileReader();
-      reader.onload = () => {
-        const imageDataUrl = reader.result;
-        console.log('Generated imageDataUrl:', imageDataUrl); // <-- ADD THIS LINE to inspect the generated URL
-        
-        // Add to gallery and update credits
-        setGallery(prev => [imageDataUrl, ...prev]);
-        setCredits(prev => {
-          const newTotal = prev - 1;
-          localStorage.setItem('credits', newTotal.toString()); // Update localStorage on use
-          return newTotal;
-        });
-        setFile(null);
-      };
-      reader.readAsDataURL(res.data);
+      // --- Save Blob to IndexedDB and update state --- 
+      const imageBlob = res.data; // This is the Blob
+      if (imageBlob && imageBlob.size > 0) {
+          const db = await initDB();
+          const newItemId = await db.add(STORE_NAME, { blob: imageBlob });
+          console.log(`Image blob saved to IndexedDB with ID: ${newItemId}`);
+
+          // Create a temporary object URL for display in this session
+          const objectUrl = URL.createObjectURL(imageBlob);
+          
+          // Add to gallery state (newest first) and update credits
+          setGallery(prev => [{ id: newItemId, url: objectUrl }, ...prev]);
+          setCredits(prev => {
+            const newTotal = prev - 1;
+            localStorage.setItem('credits', newTotal.toString()); // Update localStorage on use
+            return newTotal;
+          });
+          setFile(null); // Clear the uploaded file state
+      } else {
+          console.error('Received empty or invalid blob from backend.');
+          alert('Failed to generate image: Received invalid data from server.');
+      }
+      // ------------------------------------------------
 
     } catch (err) {
       console.error("Generation Error:", err);
@@ -336,7 +344,7 @@ function App() {
           <section className="generated-section">
             <h2>Generated Image</h2>
             <div className="generated-image-container">
-              <img src={gallery[0]} alt="latest generated" className="generated-image" />
+              <img src={gallery[0].url} alt="latest generated" className="generated-image" />
             </div>
           </section>
         )}
@@ -346,12 +354,12 @@ function App() {
             {gallery.length === 0 ? (
               <div className="no-history">No image generations yet. Your last generations will appear here.</div>
             ) : (
-              gallery.map((imageUrl, i) => (
-                <div key={i} className="gallery-item" style={{ marginBottom: '20px', position: 'relative' }}>
-                  <img src={imageUrl} alt={`gen-${i}`} style={{ width: '100%', borderRadius: '8px' }} />
+              gallery.map((item) => (
+                <div key={item.id} className="gallery-item" style={{ marginBottom: '20px', position: 'relative' }}>
+                  <img src={item.url} alt={`gen-${item.id}`} style={{ width: '100%', borderRadius: '8px' }} />
                   <a 
-                    href={imageUrl} 
-                    download={`jujutsu-kaisen-image-${i}.png`}
+                    href={item.url} 
+                    download={`jujutsu-kaisen-image-${item.id}.png`}
                     style={{
                       display: 'block',
                       marginTop: '10px',
