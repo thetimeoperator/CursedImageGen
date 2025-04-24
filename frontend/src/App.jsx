@@ -234,10 +234,10 @@ function App() {
       const imageBlob = response.data;
       console.log('Response Data:', imageBlob);
       console.log('Type of Response Data:', typeof imageBlob, imageBlob instanceof Blob);
-      console.log('Check: Is Blob and size > 0?', imageBlob instanceof Blob && imageBlob.size > 0);
+      console.log('Check: Is Blob and size > 0?', imageBlob && imageBlob.size > 0);
       
       // --- Save Blob to IndexedDB and update state --- 
-      if (imageBlob instanceof Blob && imageBlob.size > 0) {
+      if (imageBlob && imageBlob.size > 0) {
           const db = await initDB();
           const newItemId = await db.add(STORE_NAME, { blob: imageBlob });
           console.log(`Image blob saved to IndexedDB with ID: ${newItemId}`);
@@ -268,8 +268,8 @@ function App() {
               alert('Image was generated and saved, but failed to create a display URL.');
           }
       } else {
-          console.error('Received empty or invalid blob from backend.');
-          alert('Failed to generate image: Received invalid data from server.');
+          console.error('Received invalid/empty data from backend. Response data:', imageBlob);
+          alert('Failed to generate image: Received invalid or empty data from server.');
       }
       // ------------------------------------------------
 
