@@ -34,13 +34,16 @@ const STORE_NAME = 'generatedImages';
 const DB_VERSION = 1;
 
 async function initDB() {
+  console.log('[initDB] Attempting to open IndexedDB...');
   const db = await openDB(DB_NAME, DB_VERSION, {
     upgrade(db) {
+      console.log('[initDB] Upgrade needed. Creating object store:', STORE_NAME);
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
       }
     },
   });
+  console.log('[initDB] Database opened successfully.');
   return db;
 }
 // ----------------------
@@ -99,9 +102,12 @@ function App() {
   // --- Load Gallery from IndexedDB on Mount ---
   useEffect(() => {
     async function loadGalleryFromDB() {
+      console.log('[loadGalleryFromDB] Starting...');
       try {
         const db = await initDB();
+        console.log('[loadGalleryFromDB] DB initialized, getting all items...');
         const blobs = await db.getAll(STORE_NAME);
+        console.log(`[loadGalleryFromDB] Found ${blobs.length} items in DB.`);
         const objectUrls = blobs.map(item => ({ 
           id: item.id, // Keep the ID for potential deletion later
           url: URL.createObjectURL(item.blob) 
