@@ -72,20 +72,24 @@ function App() {
 
   // Load initial credits from localStorage or default to 0
   useEffect(() => {
-    const initialCredits = localStorage.getItem('credits');
-    console.log('Attempting to load credits from localStorage:', initialCredits); 
-    if (initialCredits !== null) {
-      const parsedCredits = parseInt(initialCredits, 10);
-      if (!isNaN(parsedCredits)) {
-        console.log('Parsed credits successfully:', parsedCredits); 
-        setCredits(parsedCredits);
-        console.log(`Loaded ${parsedCredits} credits from localStorage.`);
+    const storedCredits = localStorage.getItem('credits');
+    console.log('[Credits Load] Retrieved from localStorage:', storedCredits);
+    if (storedCredits) {
+      const numCredits = parseInt(storedCredits, 10);
+      if (!isNaN(numCredits)) {
+        setCredits(numCredits);
+        console.log('[Credits Load] Set credits state to:', numCredits);
       } else {
-         console.warn('Invalid credit value found in localStorage, using 0.');
+        console.error('[Credits Load] Invalid number found in localStorage, resetting to default.');
+        localStorage.setItem('credits', '0'); // Reset if invalid
+        setCredits(0);
+        console.log('[Credits Load] Set credits state to default:', 0);
       }
     } else {
-      console.log('No credits found in localStorage, defaulting to 0.'); 
-      setCredits(0); 
+      // If no credits in localStorage, initialize with default
+      localStorage.setItem('credits', '0');
+      setCredits(0);
+      console.log('[Credits Load] No credits found in localStorage, initialized to default:', 0);
     }
   }, []);
 
