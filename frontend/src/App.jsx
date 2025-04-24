@@ -210,6 +210,7 @@ function App() {
       const reader = new FileReader();
       reader.onload = () => {
         const imageDataUrl = reader.result;
+        console.log('Generated imageDataUrl:', imageDataUrl); // <-- ADD THIS LINE to inspect the generated URL
         
         // Add to gallery and update credits
         setGallery(prev => [imageDataUrl, ...prev]);
