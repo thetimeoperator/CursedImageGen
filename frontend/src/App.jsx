@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
+// Determine the base API URL. In development, it might be proxied, 
+// but in production, it must be set via the environment variable.
+// Fallback to /api which relies on proxy in dev, but requires proper setup in prod if served from same domain (not our case here).
+const API_BASE_URL = process.env.REACT_APP_API_URL || ''; // Use REACT_APP_API_URL in Vercel
+
 // Basic Modal Styles (can be moved to CSS file)
 const modalOverlayStyle = {
   position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -101,7 +106,7 @@ function App() {
         setLoading(true); // Show loading indicator during confirmation
         try {
           console.log(`Found session_id: ${sessionId}, confirming purchase...`);
-          const res = await axios.get('/api/confirm', { params: { session_id: sessionId } });
+          const res = await axios.get(`${API_BASE_URL}/api/confirm`, { params: { session_id: sessionId } });
           
           if (res.data && res.data.credits) {
             const purchasedCredits = parseInt(res.data.credits, 10);
@@ -145,7 +150,7 @@ function App() {
     const sessionId = params.get('session_id');
     if (sessionId) {
       setLoading(true); // Show loading indicator while confirming
-      axios.get(`http://localhost:8000/api/confirm?session_id=${sessionId}`)
+      axios.get(`${API_BASE_URL}/api/confirm?session_id=${sessionId}`)
         .then(res => {
           if (res.data && res.data.credits) {
             const newCredits = res.data.credits;
@@ -198,17 +203,13 @@ function App() {
     
     try {
       console.log('Sending image to backend, file size:', file.size);
-      const res = await axios.post('http://localhost:8000/api/generate', formData, {
-        headers: { 
-          'Content-Type': 'multipart/form-data',
-          'Accept': 'application/json'
-        },
-        withCredentials: false
+      const res = await axios.post(`${API_BASE_URL}/api/generate`, formData, {
+        responseType: 'blob' 
       });
       
-      if (res.data.image_base64) {
-        // Create a complete data URL from the base64 string
-        const imageDataUrl = `data:image/png;base64,${res.data.image_base64}`;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const imageDataUrl = reader.result;
         
         // Add to gallery and update credits
         setGallery(prev => [imageDataUrl, ...prev]);
@@ -218,18 +219,9 @@ function App() {
           return newTotal;
         });
         setFile(null);
-      } else if (res.data.url) {
-        // For backward compatibility with the old API response format
-        setGallery(prev => [res.data.url, ...prev]);
-        setCredits(prev => {
-          const newTotal = prev - 1;
-          localStorage.setItem('credits', newTotal.toString()); // Update localStorage on use
-          return newTotal;
-        });
-        setFile(null);
-      } else if (res.data.error) {
-        alert(`Error: ${res.data.error}`);
-      }
+      };
+      reader.readAsDataURL(res.data);
+
     } catch (err) {
       console.error("Generation Error:", err);
       
@@ -266,7 +258,7 @@ function App() {
     setLoading(true);
     setShowModal(false);
     try {
-      const res = await axios.get('http://localhost:8000/api/checkout', { params: { price_id: priceId } });
+      const res = await axios.get(`${API_BASE_URL}/api/checkout`, { params: { price_id: priceId } });
       if (res.data && res.data.url) {
         window.location.href = res.data.url;
       } else {
