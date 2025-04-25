@@ -32,7 +32,7 @@ const modalButtonStyle = {
 const DB_NAME = 'JJKImageGenDB';
 const STORE_NAME = 'generatedImages';
 const DB_VERSION = 1;
-const INITIAL_CREDITS = 50; // Set desired initial credits here
+const INITIAL_CREDITS = 0; // Set desired initial credits here
 
 async function initDB() {
   console.log('[initDB] Attempting to open IndexedDB...');
